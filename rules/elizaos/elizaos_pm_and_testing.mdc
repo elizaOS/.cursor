@@ -1,0 +1,14 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Please note that we always use bun for our package manager and file running, NOT npm or pnpm
+
+For testing, we run 'elizaos test' on plugins and projects, and vitest on core packages
+
+Our e2e plugin and project tests are run by elizaos and should not include vitest global state or objects
+
+Our unit tests are in vitest
+
+We typically store tests in `src/__tests__/`
