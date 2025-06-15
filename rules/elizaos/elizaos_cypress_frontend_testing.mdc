@@ -1,0 +1,304 @@
+---
+description: elizaos unit testing procedure and help
+globs: 
+alwaysApply: false
+---
+# Cypress Testing Guide for ElizaOS
+
+This guide covers how to write, run, and verify Cypress tests for ElizaOS frontend components and plugins.
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Test Structure](#test-structure)
+3. [Writing Component Tests](#writing-component-tests)
+4. [Writing E2E Tests](#writing-e2e-tests)
+5. [Running Tests](#running-tests)
+6. [Best Practices](#best-practices)
+7. [Troubleshooting](#troubleshooting)
+
+## Overview
+
+ElizaOS uses Cypress for frontend testing with two main types of tests:
+
+- **Component Tests**: Test individual React components in isolation
+- **E2E Tests**: Test full user workflows (not yet implemented)
+
+All Cypress tests are located in `src/__tests__/cypress/` alongside unit and e2e tests.
+
+## Test Structure
+
+```
+src/__tests__/cypress/
+├── component/          # Component tests
+│   ├── ExampleRoute.cy.tsx
+│   └── PanelComponent.cy.tsx
+├── e2e/               # End-to-end tests (future)
+└── support/           # Cypress configuration
+    ├── commands.ts    # Custom commands
+    ├── component.ts   # Component test setup
+    ├── component-index.html
+    └── e2e.ts        # E2E test setup
+```
+
+## Writing Component Tests
+
+### Basic Component Test Structure
+
+```typescript
+import React from 'react';
+import { MyComponent } from '../../../frontend/components/MyComponent';
+
+describe('MyComponent Tests', () => {
+  describe('Rendering', () => {
+    it('should render correctly', () => {
+      cy.mount(<MyComponent prop="value" />);
+      cy.contains('Expected text').should('be.visible');
+    });
+  });
+});
+```
+
+### Testing ElizaOS Components
+
+ElizaOS components often require specific context:
+
+```typescript
+describe('ElizaOS Component', () => {
+  beforeEach(() => {
+    // Set up ELIZA_CONFIG
+    cy.window().then((win) => {
+      win.ELIZA_CONFIG = {
+        agentId: 'test-agent-id',
+        apiBase: 'http://localhost:3000'
+      };
+    });
+  });
+
+  it('should handle agent configuration', () => {
+    cy.mount(<AgentComponent />);
+    cy.contains('test-agent-id').should('be.visible');
+  });
+});
+```
+
+### Testing Panel Components
+
+Plugin panels have specific requirements:
+
+```typescript
+import { panels } from '../../../frontend/index';
+
+describe('Panel Tests', () => {
+  const PanelComponent = panels[0]?.component;
+
+  it('should export panel configuration', () => {
+    expect(panels).to.be.an('array');
+    expect(panels[0]).to.have.property('name');
+    expect(panels[0]).to.have.property('component');
+  });
+
+  it('should render panel with agent ID', () => {
+    cy.mount(<PanelComponent agentId="test-123" />);
+    // Add assertions
+  });
+});
+```
+
+## Custom Commands
+
+ElizaOS provides custom Cypress commands:
+
+### `shouldBeDarkMode()`
+
+Verifies dark mode is applied:
+
+```typescript
+cy.shouldBeDarkMode();
+```
+
+### `setElizaConfig(config)`
+
+Sets the ELIZA_CONFIG for testing:
+
+```typescript
+cy.setElizaConfig({
+  agentId: 'test-agent',
+  apiBase: 'http://localhost:3000',
+});
+```
+
+## Running Tests
+
+### Interactive Mode (Recommended for Development)
+
+```bash
+# Open Cypress Test Runner
+npx cypress open
+
+# Select "Component Testing"
+# Choose your browser
+# Click on test files to run them
+```
+
+### Headless Mode (CI/CD)
+
+```bash
+# Run all component tests
+npx cypress run --component
+
+# Run specific test file
+npx cypress run --component --spec "src/__tests__/cypress/component/ExampleRoute.cy.tsx"
+```
+
+### NPM Scripts
+
+Add these to your `package.json`:
+
+```json
+{
+  "scripts": {
+    "cy:open": "cypress open",
+    "cy:run": "cypress run --component",
+    "cy:test": "cypress run --component --reporter spec"
+  }
+}
+```
+
+## Best Practices
+
+### 1. Component Isolation
+
+- Test components independently
+- Mock external dependencies
+- Use data-testid for reliable selection
+
+### 2. Configuration Testing
+
+- Always test with/without ELIZA_CONFIG
+- Test error states and fallbacks
+- Verify configuration changes
+
+### 3. Accessibility
+
+- Use semantic queries (findByRole, findByText)
+- Test keyboard navigation
+- Verify ARIA attributes
+
+### 4. API Mocking
+
+```typescript
+cy.intercept('GET', '/api/agent/*', {
+  statusCode: 200,
+  body: { data: 'mocked' }
+}).as('getAgent');
+
+cy.mount(<Component />);
+cy.wait('@getAgent');
+```
+
+### 5. Dark Mode Support
+
+Always verify components work in dark mode:
+
+```typescript
+it('should support dark mode', () => {
+  cy.mount(<Component />);
+  cy.shouldBeDarkMode();
+  // Verify component styling
+});
+```
+
+## Testing Patterns
+
+### Pattern 1: Configuration Error Handling
+
+```typescript
+it('should handle missing configuration', () => {
+  cy.window().then((win) => {
+    win.ELIZA_CONFIG = undefined;
+  });
+
+  cy.mount(<Component />);
+  cy.contains('Error').should('be.visible');
+});
+```
+
+### Pattern 2: Dynamic Content Testing
+
+```typescript
+it('should update on prop changes', () => {
+  const { rerender } = cy.mount(<Component value="initial" />);
+  cy.contains('initial').should('be.visible');
+
+  rerender(<Component value="updated" />);
+  cy.contains('updated').should('be.visible');
+});
+```
+
+### Pattern 3: React Query Integration
+
+```typescript
+it('should handle data fetching', () => {
+  cy.intercept('GET', '/api/data', { fixture: 'data.json' });
+  cy.mount(<DataComponent />);
+
+  // Loading state
+  cy.contains('Loading...').should('be.visible');
+
+  // Success state
+  cy.contains('Data loaded').should('be.visible');
+});
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Import Errors**
+
+   - Ensure paths are relative to test file location
+   - Check tsconfig.json paths configuration
+
+2. **Style Issues**
+
+   - Import CSS in support/component.ts
+   - Verify Tailwind/PostCSS configuration
+
+3. **TypeScript Errors**
+
+   - Add type definitions in support files
+   - Use proper TypeScript syntax in .cy.tsx files
+
+4. **Component Not Rendering**
+   - Check React version compatibility
+   - Verify mount command is available
+   - Check for console errors
+
+### Debug Tips
+
+1. Use `cy.debug()` to pause execution
+2. Check browser console for errors
+3. Use `.then()` for debugging:
+   ```typescript
+   cy.get('element').then(($el) => {
+     console.log('Element:', $el);
+   });
+   ```
+
+## Verification Checklist
+
+Before committing tests:
+
+- [ ] All tests pass in interactive mode
+- [ ] All tests pass in headless mode
+- [ ] No TypeScript errors
+- [ ] Proper error handling tested
+- [ s tode checked
+
+## Next Steps
+
+1. Add more component tests for new features
+2. Implement E2E tests for user workflows
+3. Add visual regression testing
+4. Set up CI/CD integration
