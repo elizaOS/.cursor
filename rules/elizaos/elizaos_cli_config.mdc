@@ -1,5 +1,5 @@
 ---
-description: ElizaOS CLI config
+description: ElizaOS CLI configuration and settings
 globs: 
 alwaysApply: false
 ---

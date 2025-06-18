@@ -1,68 +1,110 @@
 ---
-description: 
-globs: 
-alwaysApply: false
----
----
 title: ElizaOS End-to-End Runtime Testing Guide
+alwaysApply: true
 ---
 
 # ElizaOS End-to-End Runtime Testing
 
-This guide explains how to create end-to-end (e2e) runtime tests for ElizaOS plugins that are executed by the ElizaOS CLI test runner.
+This guide explains how to create end-to-end (E2E) runtime tests for ElizaOS projects and plugins using the ElizaOS CLI test runner.
 
 ## Overview
 
-ElizaOS e2e tests are **real runtime tests** that:
-- Execute against actual ElizaOS runtime instances
-- Create real tasks, memories, and side effects
-- Verify actual outcomes, not mocked behaviors
-- Are run using the `elizaos test` command
+ElizaOS E2E tests are **real runtime tests** that:
+
+- Execute against actual ElizaOS runtime instances with live services
+- Use real database (in-memory PGLite for testing), plugins, and AI capabilities
+- Create real messages, memories, and interactions
+- Verify actual agent behaviors and responses
+- Are run using the `elizaos test` command which wraps vitest
+
+## Core Interfaces
+
+```typescript
+import type { IAgentRuntime } from '@elizaos/core';
+
+/**
+ * Represents a test case for evaluating agent or plugin functionality.
+ */
+export interface TestCase {
+  /** A descriptive name for the test case */
+  name: string;
+  /** The test function that receives the runtime instance */
+  fn: (runtime: IAgentRuntime) => Promise<void> | void;
+}
+
+/**
+ * Represents a suite of related test cases.
+ */
+export interface TestSuite {
+  /** A descriptive name for the test suite */
+  name: string;
+  /** An array of TestCase objects */
+  tests: TestCase[];
+}
+```
 
 ## Test Structure
 
-### 1. Individual Test Object
-
-Each test must export an object with this structure:
+### 1. Test Suite Class Implementation
 
 ```typescript
-export const myTestName = {
-  name: "my-test-name",
-  description: "Description of what this test does",
-  fn: async (runtime: IAgentRuntime) => {
-    // Test implementation
-  }
-};
+import { type TestSuite } from '@elizaos/core';
+
+export class MyTestSuite implements TestSuite {
+  name = 'my-test-suite';
+  description = 'E2E tests for my feature';
+
+  tests = [
+    {
+      name: 'Test case 1',
+      fn: async (runtime: any) => {
+        // Test implementation
+        // Throw error on failure
+      },
+    },
+    {
+      name: 'Test case 2',
+      fn: async (runtime: any) => {
+        // Another test
+      },
+    },
+  ];
+}
+
+// Export default instance for test runner
+export default new MyTestSuite();
 ```
 
-### 2. Test Suite Array
+### 2. Test Suite Organization
 
-Tests are grouped into TestSuite arrays:
+For projects with multiple test files:
 
 ```typescript
-import { type TestSuite } from "@elizaos/core";
+// src/__tests__/e2e/index.ts
+import projectTestSuite from './project';
+import featureTestSuite from './feature';
+import integrationTestSuite from './integration';
 
-export const myTestSuite: TestSuite[] = [
-  {
-    name: "My Test Suite Name",
-    tests: [
-      test1,
-      test2,
-      test3,
-    ],
-  },
-];
+export const testSuites = [projectTestSuite, featureTestSuite, integrationTestSuite];
+
+export default testSuites;
 ```
 
 ### 3. Plugin Integration
 
-The test suite is added to the plugin's `tests` property:
+For plugins, add the test suite to the plugin's `tests` property:
 
 ```typescript
+// In plugin's tests.ts
+export { MyPluginTestSuite } from './__tests__/e2e/my-plugin';
+
+// In plugin's index.ts
+import { MyPluginTestSuite } from './tests';
+
 export const myPlugin: Plugin = {
-  name: "my-plugin",
-  description: "My plugin description",
-  tests: myTestSuite,  // Add tests here
+  name: 'my-plugin',
+  description: 'My plugin description',
+  tests: [MyPluginTestSuite], // Add test suite here
   actions: [...],
   providers: [...],
   // ... other plugin properties
@@ -73,239 +115,385 @@ export const myPlugin: Plugin = {
 
 ### Key Principles
 
-1. **Use Real Runtime**: Tests receive an actual `IAgentRuntime` instance
-2. **No Mocks**: Do not mock runtime methods or dependencies
-3. **Real Side Effects**: Tests create real tasks, memories, etc.
-4. **Verify Outcomes**: Check that expected tasks/data were actually created
+1. **Real Runtime**: Tests receive an actual `IAgentRuntime` instance - no mocks
+2. **Real Environment**: Database, services, and plugins are fully initialized
+3. **Real Interactions**: Test actual message processing and agent responses
+4. **Error = Failure**: Tests pass if no errors are thrown, fail if errors occur
+5. **Independent Tests**: Each test should work in isolation
 
-### Test Implementation Pattern
+### Basic Test Pattern
 
 ```typescript
-export const myE2ETest = {
-  name: "my-feature-e2e",
-  description: "E2E test for my feature",
-  fn: async (runtime: IAgentRuntime) => {
-    console.log("Starting My Feature E2E Test...");
-    
+{
+  name: 'My feature test',
+  fn: async (runtime: any) => {
     try {
-      // 1. Create test data
-      const testRoomId = createUniqueUuid(runtime, "test-room");
-      const message: Memory = {
-        id: createUniqueUuid(runtime, "test-message"),
-        content: { 
-          text: "Test message content", 
-          source: "test" 
-        },
-        roomId: testRoomId,
-        agentId: runtime.agentId,
-        entityId: runtime.agentId,
-        createdAt: Date.now(),
+      // 1. Set up test data
+      const testData = {
+        // Your test setup
       };
 
-      // 2. Find and validate action
-      const myAction = runtime.actions.find(
-        action => action.name === "MY_ACTION_NAME"
-      );
-      
-      if (!myAction) {
-        throw new Error("MY_ACTION_NAME action not found");
+      // 2. Execute the feature
+      const result = await runtime.someMethod(testData);
+
+      // 3. Verify the results
+      if (!result) {
+        throw new Error('Expected result but got nothing');
       }
 
-      const isValid = await myAction.validate(runtime, message);
-      if (!isValid) {
-        throw new Error("Message validation failed");
-      }
-
-      // 3. Execute action
-      const state = await runtime.composeState(message);
-      const callback = async (response: any) => {
-        console.log("Action response:", response.text);
-        return [];
-      };
-      
-      await myAction.handler(runtime, message, state, {}, callback);
-
-      // 4. Wait for async operations
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // 5. Verify outcomes
-      const createdTasks = await runtime.getTasks({
-        tags: ["expected", "tags"],
-      });
-
-      if (createdTasks.length === 0) {
-        throw new Error("No tasks were created");
-      }
-
-      console.log(`✓ Created ${createdTasks.length} tasks`);
-      console.log("✅ My Feature E2E Test PASSED\n");
-      
+      // Test passes if we reach here without throwing
     } catch (error) {
-      console.error("❌ My Feature E2E Test FAILED:", error);
-      throw error;
+      // Re-throw with context for debugging
+      throw new Error(`My feature test failed: ${(error as Error).message}`);
     }
-  }
-};
+  },
+}
 ```
 
-## Test Organization
+## Common Testing Patterns
 
-### File Structure
+### 1. Testing Character Configuration
+
+```typescript
+{
+  name: 'Character configuration test',
+  fn: async (runtime: any) => {
+    const character = runtime.character;
+
+    // Verify required fields
+    if (!character.name) {
+      throw new Error('Character name is missing');
+    }
+
+    if (!Array.isArray(character.bio)) {
+      throw new Error('Character bio should be an array');
+    }
+
+    if (!character.system) {
+      throw new Error('Character system prompt is missing');
+    }
+  },
+}
+```
+
+### 2. Testing Natural Language Processing
+
+```typescript
+{
+  name: 'Agent responds to hello world',
+  fn: async (runtime: any) => {
+    // Create unique identifiers
+    const roomId = `test-room-${Date.now()}`;
+    const userId = 'test-user';
+
+    // Create message
+    const message = {
+      id: `msg-${Date.now()}`,
+      userId: userId,
+      agentId: runtime.agentId,
+      roomId: roomId,
+      content: {
+        text: 'hello world',
+        type: 'text',
+      },
+      createdAt: Date.now(),
+    };
+
+    // Process message
+    await runtime.processMessage(message);
+
+    // Wait for processing
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Retrieve messages
+    const messages = await runtime.messageManager.getMessages({
+      roomId,
+      limit: 10,
+    });
+
+    // Verify response
+    const agentResponse = messages.find(
+      m => m.userId === runtime.agentId && m.id !== message.id
+    );
+
+    if (!agentResponse) {
+      throw new Error('Agent did not respond');
+    }
+
+    console.log('Agent response:', agentResponse.content.text);
+  },
+}
+```
+
+### 3. Testing Actions
+
+```typescript
+{
+  name: 'Action execution test',
+  fn: async (runtime: any) => {
+    // Find action
+    const action = runtime.actions.find(a => a.name === 'MY_ACTION');
+    if (!action) {
+      throw new Error('MY_ACTION not found');
+    }
+
+    // Create test message
+    const message = {
+      entityId: uuidv4(),
+      roomId: uuidv4(),
+      content: {
+        text: 'Test message',
+        source: 'test',
+        actions: ['MY_ACTION'], // Explicitly request action
+      },
+    };
+
+    // Create state
+    const state = {
+      values: {},
+      data: {},
+      text: '',
+    };
+
+    // Set up callback
+    let responseReceived = false;
+    const callback = async (content) => {
+      if (content.actions?.includes('MY_ACTION')) {
+        responseReceived = true;
+      }
+      return [];
+    };
+
+    // Execute action
+    await action.handler(runtime, message, state, {}, callback, []);
+
+    if (!responseReceived) {
+      throw new Error('Action did not execute properly');
+    }
+  },
+}
+```
+
+### 4. Testing Providers
+
+```typescript
+{
+  name: 'Provider functionality test',
+  fn: async (runtime: any) => {
+    const provider = runtime.providers.find(
+      p => p.name === 'MY_PROVIDER'
+    );
+
+    if (!provider) {
+      throw new Error('MY_PROVIDER not found');
+    }
+
+    const result = await provider.get(runtime, message, state);
+
+    if (!result.text) {
+      throw new Error('Provider returned no text');
+    }
+  },
+}
+```
+
+### 5. Testing Services
+
+```typescript
+{
+  name: 'Service lifecycle test',
+  fn: async (runtime: any) => {
+    const service = runtime.getService('my-service');
+
+    if (!service) {
+      throw new Error('Service not found');
+    }
+
+    // Test service methods
+    const result = await service.someMethod();
+
+    if (!result) {
+      throw new Error('Service method failed');
+    }
+
+    // Test cleanup
+    await service.stop();
+  },
+}
+```
+
+### 6. Testing Conversation Context
+
+```typescript
+{
+  name: 'Agent maintains conversation context',
+  fn: async (runtime: any) => {
+    const roomId = `test-room-${Date.now()}`;
+    const userId = 'test-user';
+
+    // First message
+    await runtime.processMessage({
+      id: `msg-1`,
+      userId,
+      roomId,
+      content: { text: 'My favorite color is blue.' },
+      createdAt: Date.now(),
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Follow-up message
+    await runtime.processMessage({
+      id: `msg-2`,
+      userId,
+      roomId,
+      content: { text: 'What color did I just mention?' },
+      createdAt: Date.now() + 1000,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Check responses
+    const messages = await runtime.messageManager.getMessages({ roomId });
+    const responses = messages.filter(m => m.userId === runtime.agentId);
+
+    if (responses.length < 2) {
+      throw new Error('Agent did not respond to both messages');
+    }
+
+    // Verify context awareness
+    const lastResponse = responses[responses.length - 1];
+    if (!lastResponse.content.text.toLowerCase().includes('blue')) {
+      throw new Error('Agent did not maintain context');
+    }
+  },
+}
+```
+
+## File Organization
+
+### For Projects
+
 ```
 src/
-├── index.ts              # Plugin definition
-├── actions/              # Action implementations
-├── providers/            # Provider implementations
-└── tests/               # E2E tests
-    ├── index.ts         # Test suite export
-    ├── feature1.e2e.ts  # Feature 1 tests
-    ├── feature2.e2e.ts  # Feature 2 tests
-    └── integration.e2e.ts # Integration tests
+├── __tests__/
+│   └── e2e/
+│       ├── index.ts           # Test suite exports
+│       ├── project.ts         # Project-specific tests
+│       ├── natural-language.ts # NLP tests
+│       └── integration.ts     # Integration tests
+├── index.ts                   # Project entry point
+└── character.json             # Character configuration
 ```
 
-### Example Test Index
+### For Plugins
 
-Reference: [src/scenarios/tests/index.ts](mdc:src/scenarios/tests/index.ts)
-
-```typescript
-import { type TestSuite } from "@elizaos/core";
-import { feature1E2ETest } from "./feature1.e2e";
-import { feature2E2ETest } from "./feature2.e2e";
-import { integrationE2ETest } from "./integration.e2e";
-
-export const myPluginTests: TestSuite[] = [
-  {
-    name: "My Plugin E2E Tests",
-    tests: [
-      feature1E2ETest,
-      feature2E2ETest,
-      integrationE2ETest,
-    ],
-  },
-];
+```
+src/
+├── __tests__/
+│   └── e2e/
+│       └── plugin-tests.ts    # Plugin test suite
+├── tests.ts                   # Test exports
+├── index.ts                   # Plugin definition
+├── actions/                   # Action implementations
+└── providers/                 # Provider implementations
 ```
 
-## Common Test Patterns
+## Running Tests
 
-### 1. Testing Actions
+### Commands
 
-```typescript
-// Find action
-const action = runtime.actions.find(a => a.name === "ACTION_NAME");
-if (!action) throw new Error("Action not found");
+```bash
+# Run all tests (from project or plugin directory)
+elizaos test
 
-// Validate
-const isValid = await action.validate(runtime, message);
-if (!isValid) throw new Error("Validation failed");
+# Or using npm script
+npm test
 
-// Execute
-await action.handler(runtime, message, state, {}, callback);
+# For coverage (if configured)
+npm run test:coverage
 ```
 
-### 2. Testing Providers
+### Test Output Best Practices
+
+Use console.log for test progress:
 
 ```typescript
-// Find provider
-const provider = runtime.providers.find(p => p.name === "PROVIDER_NAME");
-if (!provider) throw new Error("Provider not found");
+console.log('Starting my feature test...');
+console.log('✓ Step 1 completed');
+console.log('✓ Step 2 completed');
+console.log('✅ My feature test PASSED');
 
-// Get context
-const context = await provider.get(runtime, message, state);
+// On failure
+console.error('❌ My feature test FAILED:', error);
+```
 
-// Verify content
-if (!context.text.includes("Expected content")) {
-  throw new Error("Provider didn't return expected content");
+## Best Practices
+
+1. **Descriptive Names**: Use clear test names that describe what is being tested
+2. **Error Context**: Always wrap errors with additional context
+3. **Console Logging**: Log progress for easier debugging
+4. **Async Handling**: Use appropriate delays for async operations
+5. **Unique IDs**: Use timestamps or UUIDs to avoid conflicts
+6. **Test Independence**: Don't rely on state from other tests
+7. **Real Verifications**: Check actual runtime behavior, not mocked responses
+
+## Common Issues and Solutions
+
+### Runtime Methods Undefined
+
+- Ensure you're using the actual runtime instance provided
+- Check that required plugins are loaded in character config
+- Verify services are initialized
+
+### Timing Issues
+
+```typescript
+// Add delays after async operations
+await new Promise((resolve) => setTimeout(resolve, 1000));
+```
+
+### Message Processing
+
+- Use unique room IDs to isolate conversations
+- Wait for message processing to complete
+- Query messages with appropriate filters
+
+### Type Safety
+
+- The runtime parameter is typed as `any` in examples for flexibility
+- Cast to specific types when needed for better IDE support
+
+## Advanced Patterns
+
+### Testing Multiple Interactions
+
+```typescript
+for (const greeting of ['hello', 'hi', 'hey']) {
+  const roomId = `test-${Date.now()}-${Math.random()}`;
+
+  await runtime.processMessage({
+    roomId,
+    content: { text: greeting },
+    // ... other fields
+  });
+
+  // Verify each response
 }
 ```
 
-### 3. Verifying Task Creation
+### Parallel Test Execution
 
 ```typescript
-// Wait for async operations
-await new Promise(resolve => setTimeout(resolve, 1000));
-
-// Query tasks
-const tasks = await runtime.getTasks({
-  tags: ["tag1", "tag2"],
-});
-
-// Verify
-if (tasks.length === 0) {
-  throw new Error("No tasks created");
-}
-
-// Check specific properties
-const task = tasks.find(t => t.name === "Expected Task Name");
-if (!task) throw new Error("Specific task not found");
-```
-
-### 4. Integration Testing
-
-Reference: [src/scenarios/tests/scenariosIntegration.e2e.ts](mdc:src/scenarios/tests/scenariosIntegration.e2e.ts)
-
-```typescript
-// Test multiple features together
-const messages = [message1, message2, message3];
 const promises = messages.map(async (msg) => {
-  // Process each message
-  await processMessage(runtime, msg);
+  return runtime.processMessage(msg);
 });
 
 await Promise.all(promises);
 ```
 
-## Running Tests
+## Summary
 
-### Build First
-```bash
-npm run build
-```
+ElizaOS E2E tests provide a powerful way to verify agent behavior in a real runtime environment. By following these patterns and best practices, you can create comprehensive test suites that ensure your agents and plugins work correctly with actual language processing, database operations, and service interactions.
 
-### Run Tests
-```bash
-npm run test:e2e
-# or
-elizaos test
-```
-
-### Test Output
-- Tests log their progress with console.log
-- Use ✓ for successes
-- Use ✅ for test completion
-- Use ❌ for failures
-- Throw errors to fail tests
-
-## Best Practices
-
-1. **Clear Test Names**: Use descriptive names like `documentation-research-e2e`
-2. **Console Logging**: Log test progress for debugging
-3. **Wait for Async**: Add delays after actions that create tasks
-4. **Verify Real Data**: Check actual task/memory creation
-5. **Clean Error Messages**: Provide clear failure reasons
-6. **Test Independence**: Each test should work in isolation
-7. **Resource Cleanup**: Note that created tasks persist (by design)
-
-## Common Issues
-
-### Tests Not Found
-- Ensure tests are exported from plugin
-- Check that test structure matches expected format
-- Verify build includes test files
-
-### Runtime Methods Undefined
-- Ensure using real runtime, not mocks
-- Check that required plugins are loaded
-- Verify runtime initialization
-
-### Async Timing Issues
-- Add appropriate delays after actions
-- Wait for task creation to complete
-- Consider longer delays for complex operations
-
-## Example References
-
-- Documentation Research Test: [src/scenarios/tests/documentationResearch.e2e.ts](mdc:src/scenarios/tests/documentationResearch.e2e.ts)
-- GitHub Analysis Test: [src/scenarios/tests/githubAnalysis.e2e.ts](mdc:src/scenarios/tests/githubAnalysis.e2e.ts)
-- System Health Test: [src/scenarios/tests/systemHealth.e2e.ts](mdc:src/scenarios/tests/systemHealth.e2e.ts)
-- Learning Path Test: [src/scenarios/tests/learningPath.e2e.ts](mdc:src/scenarios/tests/learningPath.e2e.ts)
-- Integration Test: [src/scenarios/tests/scenariosIntegration.e2e.ts](mdc:src/scenarios/tests/scenariosIntegration.e2e.ts)
+Remember: **No mocks, real runtime, throw errors to fail.**

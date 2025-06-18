@@ -1,5 +1,5 @@
 ---
-description: ElizaOS Core Plugin Architecture
+description: ElizaOS Core Plugin Architecture, how plugins are implemented
 globs: 
 alwaysApply: false
 ---
@@ -247,4 +247,4 @@ export const accountBalanceProvider: Provider = {
 - [Core Types (`Plugin`, `Action`, `Provider` etc.)](mdc:packages/core/src/types.ts)
 - [Agent Runtime Implementation](mdc:packages/core/src/runtime.ts)
 - [Example: SQL Plugin](mdc:packages/plugin-sql/src/index.ts)
-- [Example: Bootstrap Plugin](mdc:packages/plugin-bootstrap/src/index.ts)
+- [Example: Bootstrap Plugin](mdc:packages/plugin-message-handling/src/index.ts)

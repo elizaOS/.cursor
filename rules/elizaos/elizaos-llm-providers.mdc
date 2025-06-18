@@ -1,5 +1,5 @@
 ---
-description: ElizaOS LLM Providers and AI Model Handling
+description: ElizaOS LLM Providers and AI Model Handling in the runtime
 globs: 
 alwaysApply: false
 ---
