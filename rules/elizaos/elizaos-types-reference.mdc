@@ -1,8 +1,7 @@
 ---
-title: ElizaOS Types Reference
-description: Comprehensive reference for all core types and interfaces in ElizaOS
+description:
 globs:
-alwaysApply: false
+alwaysApply: true
 ---
 
 # ElizaOS Types Reference
